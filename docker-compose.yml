@@ -1,0 +1,85 @@
+version: "3.5"
+
+services:
+  prosody:
+    build:
+      context: ./prosody
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 1s
+        max_attempts: 5
+        window: 60s
+    ports:
+      - "5222:5222"
+      - "5269:5269"
+      - "5000:5000"
+    depends_on:
+      - postgres
+      - coturn
+    volumes:
+      - ./nginx/ssl/callmeplease.ru.crt:/etc/prosody/certs/callmeplease.ru.crt
+      - ./nginx/ssl/callmeplease.ru.key:/etc/prosody/certs/callmeplease.ru.key
+
+  coturn:
+    image: coturn/coturn:latest
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 1s
+        max_attempts: 5
+        window: 60s
+    environment:
+      - DETECT_EXTERNAL_IP=yes
+      - DETECT_RELAY_IP=yes
+    ports:
+      ## STUN/TURN
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "3479:3479"
+      - "3479:3479/udp"
+      ## STUN/TURN SSL
+      - "5349:5349"
+      - "5349:5349/udp"
+      - "5350:5350"
+      - "5350:5350/udp"
+    volumes:
+      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf
+      - ./nginx/ssl/callmeplease.ru.key:/etc/ssl/private/privkey.pem:ro
+      - ./nginx/ssl/callmeplease.ru.crt:/etc/ssl/certs/cert.pem:ro
+
+  nginx:
+    build:
+      context: ./nginx
+    ports:
+      - target: 80
+        published: 80
+        mode: host
+      - target: 443
+        published: 443
+        mode: host
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 1s
+        max_attempts: 5
+        window: 60s
+    depends_on:
+      - prosody
+    volumes:
+      - ./data/upload:/var/www/upload
+
+  postgres:
+    image: postgres:12.1
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 1s
+        max_attempts: 5
+        window: 60s
+    environment:
+      POSTGRES_USER: "prosody"
+      POSTGRES_DB: "prosody"
+      POSTGRES_PASSWORD: "prosody"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
